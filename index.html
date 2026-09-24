@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="hr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Šahovnica slagalica</title>
+<meta name="description" content="Posloži razbijenu šahovnicu pomicanjem pločica u prazno polje — klasična slagalica 3×3, 4×4 ili 5×5.">
+<meta name="theme-color" content="#120a33">
+<link rel="icon" href="zajednicko/favicon.png" type="image/png">
+<link rel="apple-touch-icon" href="zajednicko/apple-touch-icon.png">
+<link rel="stylesheet" href="zajednicko/igre.css?v=09b9727d">
+<style>
+  .izbor { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 14px; }
+  .izbor button { padding: 7px 15px; border-radius: 999px; border: 1.5px solid var(--crta); background: var(--plo); cursor: pointer; font-weight: 600; }
+  .izbor button[aria-pressed="true"] { background: var(--crvena); color: #fff; border-color: var(--crvena); }
+  .ploha { --n: 3; position: relative; width: min(100%, 460px); aspect-ratio: 1; margin: 0 auto; padding: 8px; border-radius: 24px; background: #0008; border: 2px solid var(--crta); box-shadow: 0 0 40px #ff4d6d33; touch-action: manipulation; }
+  .plocica { position: absolute; width: calc((100% - 16px) / var(--n)); height: calc((100% - 16px) / var(--n)); padding: 3px; transition: left .14s, top .14s; cursor: pointer; }
+  .plocica div { width: 100%; height: 100%; border-radius: 12px; background-image: url(zajednicko/logo.png); background-size: calc(var(--n) * 100%) calc(var(--n) * 100%); box-shadow: 0 4px 0 #0007, inset 0 0 0 2px #ffffff33; position: relative; }
+  .plocica span { position: absolute; right: 6px; bottom: 4px; font: 900 italic 15px var(--naslovni); color: #fff; text-shadow: 0 0 4px #000, 0 0 2px #000; opacity: .85; }
+  body.bez-brojeva .plocica span { display: none; }
+  .ploha.gotovo .plocica div { box-shadow: 0 0 0 0 transparent; border-radius: 0; }
+  .uzor { width: 110px; border-radius: 16px; display: block; margin: 0 auto; }
+</style>
+</head>
+<body data-igra="igra-sahovnica">
+<header class="ig-vrh"></header>
+<main class="ig-omot">
+  <section class="ig-naslov"><span class="znak"></span><div><h1>Šahovnica slagalica</h1><p>Logo se razbio! Klikni pločicu pokraj praznog polja da je pomakneš i složi sliku natrag u što manje poteza.</p></div></section>
+
+  <div class="izbor" id="velicine"></div>
+  <div class="stupci">
+    <div><div class="ploha" id="ploha"></div></div>
+    <aside style="display:flex;flex-direction:column;gap:16px">
+      <div class="statusi">
+        <div class="status"><small>Potezi</small><b id="potezi">0</b></div>
+        <div class="status"><small>Vrijeme</small><b id="vrijeme">0:00</b></div>
+        <div class="status"><small>Najmanje</small><b id="rek">–</b></div>
+      </div>
+      <div class="ploca" style="text-align:center"><h2>Ovako treba izgledati</h2><img class="uzor" src="zajednicko/logo.png" alt="Složena slika"></div>
+      <label class="pomoc" style="display:flex;gap:8px;align-items:center;justify-content:center"><input type="checkbox" id="brojevi" checked style="width:18px;height:18px;accent-color:var(--crvena)"> Prikaži brojeve na pločicama</label>
+      <button type="button" class="gumb veliki" style="--g:var(--crvena);--gt:#fff;--gs:#9c1f35" id="promijesaj">Promiješaj</button>
+      <div class="ploca kraj-igre" id="kraj" hidden></div>
+    </aside>
+  </div>
+</main>
+<footer class="ig-dno"></footer>
+<script src="zajednicko/igre.js?v=4689b224"></script>
+<script>
+'use strict';
+const { $, $$, zvuk, konfeti, rekord } = IG;
+let n = 3, polje, prazno, potezi, pocetak, tajmer, gotovo;
+
+function kljuc() { return `igra-sahovnica-${n}`; }
+function pozicija(el, i) { const r = Math.floor(i / n), c = i % n; el.style.left = `calc(8px + ${c} * (100% - 16px) / ${n})`; el.style.top = `calc(8px + ${r} * (100% - 16px) / ${n})`; }
+function nova() {
+  polje = [...Array(n * n).keys()];           // polje[mjesto] = pločica; zadnja pločica je prazna
+  prazno = n * n - 1;
+  // miješanje valjanim potezima — slagalica je uvijek rješiva
+  let zadnje = -1;
+  for (let k = 0; k < n * n * 40; k++) {
+    const susjedi = susjediOd(prazno).filter(s => s !== zadnje);
+    const s = susjedi[Math.floor(Math.random() * susjedi.length)];
+    [polje[prazno], polje[s]] = [polje[s], polje[prazno]]; zadnje = prazno; prazno = s;
+  }
+  potezi = 0; gotovo = false; pocetak = null; clearInterval(tajmer); $('#vrijeme').textContent = '0:00';
+  $('#kraj').hidden = true; $('#ploha').classList.remove('gotovo');
+  const ploha = $('#ploha'); ploha.style.setProperty('--n', n);
+  ploha.innerHTML = polje.map((p, i) => p === n * n - 1 ? '' : `<button type="button" class="plocica" data-p="${p}" aria-label="Pločica ${p + 1}"><div style="background-position:${(p % n) / (n - 1) * 100}% ${Math.floor(p / n) / (n - 1) * 100}%"><span>${p + 1}</span></div></button>`).join('');
+  $$('.plocica').forEach(el => pozicija(el, polje.indexOf(+el.dataset.p)));
+  osvjezi();
+}
+function susjediOd(i) { const r = Math.floor(i / n), c = i % n, s = []; if (r > 0) s.push(i - n); if (r < n - 1) s.push(i + n); if (c > 0) s.push(i - 1); if (c < n - 1) s.push(i + 1); return s; }
+function pomakni(p) {
+  if (gotovo) return;
+  const i = polje.indexOf(p);
+  if (!susjediOd(prazno).includes(i)) { zvuk.krivo(); return; }
+  if (!pocetak) { pocetak = Date.now(); tajmer = setInterval(sat, 500); }
+  [polje[prazno], polje[i]] = [polje[i], polje[prazno]];
+  pozicija($(`.plocica[data-p="${p}"]`), prazno); prazno = i;
+  potezi++; zvuk.klik(); osvjezi();
+  if (polje.every((x, k) => x === k)) pobjeda();
+}
+const fmt = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+function sat() { $('#vrijeme').textContent = fmt(Math.floor((Date.now() - pocetak) / 1000)); }
+function osvjezi() { $('#potezi').textContent = potezi; const r = rekord.uzmi(kljuc(), null); $('#rek').textContent = r === null ? '–' : r; }
+function pobjeda() {
+  gotovo = true; clearInterval(tajmer);
+  const novi = rekord.predlozi(potezi, { igra: kljuc(), manjiBolji: true });
+  rekord.predlozi((rekord.uzmi() || 0) + 1);
+  $('#ploha').classList.add('gotovo');
+  const el = $('#kraj'); el.hidden = false;
+  el.innerHTML = `<h2>Složeno!</h2><p>${potezi} ${IG.mn(potezi, 'potez', 'poteza', 'poteza')} ·${$('#vrijeme').textContent}${novi ? ' — novi rekord!' : ''}</p>`;
+  osvjezi(); zvuk.pobjeda(); konfeti();
+}
+$('#ploha').addEventListener('click', e => { const b = e.target.closest('.plocica'); if (b) pomakni(+b.dataset.p); });
+document.addEventListener('keydown', e => {
+  const smjer = { ArrowUp: n, ArrowDown: -n, ArrowLeft: 1, ArrowRight: -1 }[e.key];
+  if (smjer === undefined) return;
+  const i = prazno + smjer;
+  if (i < 0 || i >= n * n || (Math.abs(smjer) === 1 && Math.floor(i / n) !== Math.floor(prazno / n))) return;
+  e.preventDefault(); pomakni(polje[i]);
+});
+$('#velicine').innerHTML = [3, 4, 5].map(v => `<button type="button" data-v="${v}" aria-pressed="${v === n}">${v} × ${v}</button>`).join('');
+$('#velicine').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; n = +b.dataset.v; $$('#velicine button').forEach(x => x.setAttribute('aria-pressed', x === b)); zvuk.klik(); nova(); });
+$('#promijesaj').onclick = () => { zvuk.klik(); nova(); };
+$('#brojevi').addEventListener('change', e => document.body.classList.toggle('bez-brojeva', !e.target.checked));
+nova();
+</script>
+</body>
+</html>
